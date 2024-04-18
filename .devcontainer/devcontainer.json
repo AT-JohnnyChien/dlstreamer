@@ -1,0 +1,25 @@
+{
+	"build": {
+		"dockerfile": "../dockerfiles/dlstreamer-dev.Dockerfile",
+		"args": {
+			"DLSTREAMER_VERSION": "2024.0",
+			"OPENVINO_FILENAME": "l_openvino_toolkit_ubuntu22_2024.0.0.14509.34caeefd078_x86_64"
+		}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-vscode.cmake-tools",
+				"ms-vscode.cpptools",
+				"ms-vscode.cpptools-extension-pack",
+				"ms-python.autopep8"
+			]
+		}
+	},
+	"workspaceMount": "source=${localWorkspaceFolder},type=bind,consistency=cached,target=/repo",
+	"workspaceFolder": "/repo",
+	"mounts": [
+	],
+	"shutdownAction": "stopContainer"
+}
