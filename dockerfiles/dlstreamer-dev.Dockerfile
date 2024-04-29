@@ -20,13 +20,27 @@
 #################################################// BEGIN OF BUILD OPTIONS //###
 FROM ubuntu:22.04
 
-ARG DEBIAN_FRONTEND=noninteractive
+# Runtime user
+ARG RUNTIME_USER_ID="1001"
+ARG RUNTIME_USERNAME="dev"
+ARG RUNTIME_HOME="/home/dev"
 ARG OPENVINO_INSTALL_DIR=/opt/intel/openvino_2024.0.0
+ARG DLSTREAMER_SOIURCE_TREE=/home/${RUNTIME_USERNAME}/dlstreamer_gst
+
+ARG DEBIAN_FRONTEND=noninteractive
 
 LABEL description="This is the development image of Intel® Deep Learning Streamer (Intel® DL Streamer) Pipeline Framework"
 LABEL vendor="Auckland Transport"
 
 SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
+
+# Add runtime user
+RUN useradd \
+    -s /bin/bash \
+    -d ${RUNTIME_HOME} -m \
+    -u ${RUNTIME_USER_ID} \
+    -g root \
+    ${RUNTIME_USERNAME}
 
 ################################################################################
 # Install OpenVINO™ Runtime on Linux from an Archive File
@@ -69,7 +83,10 @@ RUN python3 -m pip install --upgrade pip \
 
 # Install build dependencies
 RUN apt-get update \
- && apt-get install -y -q --no-install-recommends curl wget gpg software-properties-common cmake build-essential libpython3-dev python-gi-dev libopencv-dev jq \
+ && apt-get install -y -q --no-install-recommends \
+    curl wget gpg software-properties-common cmake build-essential \
+    libpython3-dev python-gi-dev libopencv-dev jq \
+    libgflags-dev libavcodec-dev libva-dev libavformat-dev libavutil-dev libswscale-dev \
  && apt-get clean
 
 # Download pre-built Debian packages for GStreamer from GitHub Release page
@@ -81,18 +98,6 @@ RUN mkdir debs \
  && rm -rf debs \
  && apt-get clean
 
-# Runtime user
-ARG RUNTIME_USER_ID="1001"
-ARG RUNTIME_USERNAME="dev"
-ARG RUNTIME_HOME="/home/dev"
-
-# Add runtime user
-RUN useradd \
-    -s /bin/bash \
-    -d ${RUNTIME_HOME} -m \
-    -u ${RUNTIME_USER_ID} \
-    -g root \
-    ${RUNTIME_USERNAME}
 
 ################################################################################
 # Install Python dependencies
@@ -100,7 +105,7 @@ RUN useradd \
 ################################################################################
 
 # Install Python requirements:
-WORKDIR ${RUNTIME_HOME}/intel/dlstreamer_gst
+WORKDIR ${DLSTREAMER_SOIURCE_TREE}
 COPY --chown=${RUNTIME_USER_ID}:root ./requirements.txt ./
 
 RUN python3 -m pip install --upgrade pip \
@@ -110,23 +115,33 @@ RUN python3 -m pip install --upgrade pip \
 # Install message brokers
 # See: https://dlstreamer.github.io/get_started/install/install_guide_ubuntu.html#step-6-install-message-brokers
 ################################################################################
-WORKDIR ${RUNTIME_HOME}/intel/dlstreamer_gst/scripts
-COPY --chown=${RUNTIME_USER_ID}:root ./scripts/install_metapublish_dependencies.sh ./
+# WORKDIR ${RUNTIME_HOME}/intel/dlstreamer_gst/scripts
+# COPY --chown=${RUNTIME_USER_ID}:root ./scripts/install_metapublish_dependencies.sh ./
 
-RUN ./install_metapublish_dependencies.sh
+# RUN ./install_metapublish_dependencies.sh
 
 # Copy the rest of source tree
-WORKDIR ${RUNTIME_HOME}/intel/dlstreamer_gst
+USER ${RUNTIME_USER_ID}
+WORKDIR ${DLSTREAMER_SOIURCE_TREE}
 COPY --chown=${RUNTIME_USER_ID}:root ./ ./
 
-RUN apt-get install -y libgflags-dev ffmpeg
+ENV PKG_CONFIG_PATH "${PKG_CONFIG_PATH}:/usr/lib/x86_64-linux-gnu/pkgconfig"
+WORKDIR ${DLSTREAMER_SOIURCE_TREE}/build
 
-USER ${RUNTIME_USER_ID}
-WORKDIR ${RUNTIME_HOME}/intel/dlstreamer_gst/build
+# source /opt/intel/openvino/setupvars.sh && source /opt/intel/dlstreamer/gstreamer/setupvars.sh
 
-# RUN source /opt/intel/openvino/setupvars.sh \
-#  && source /opt/intel/dlstreamer/gstreamer/setupvars.sh \
-#  && cmake -DENABLE_RDKAFKA_INSTALLATION=ON ..
+ARG CMAKE_BUILD_ARGS="\
+    -DBUILD_EXAMPLES=OFF \
+    -DENABLE_SAMPLES=OFF \
+    -DCMAKE_INSTALL_PREFIX:PATH=/opt/intel/dlstreamer"
+
+USER root
+
+RUN source /opt/intel/openvino/setupvars.sh \
+ && source /opt/intel/dlstreamer/gstreamer/setupvars.sh \
+ && cmake ${CMAKE_BUILD_ARGS} .. \
+ && make -j \
+ && make install
 
 # ARG DLSTREAMER_VERSION=2024.0
 # ARG OPENVINO_FILENAME=l_openvino_toolkit_ubuntu22_2024.0.0.14509.34caeefd078_x86_64
