@@ -7,8 +7,8 @@
 #pragma once
 
 #include "blob_to_roi_converter.h"
-#include <opencv2/opencv.hpp>
 #include "inference_backend/image_inference.h"
+#include <opencv2/opencv.hpp>
 
 #include <gst/gst.h>
 
@@ -23,7 +23,7 @@ class YOLOv8Converter : public BlobToROIConverter {
   protected:
     // FIXME: move roi_scale to coordinates restorer or attacher
     void parseOutputBlob(const float *data, const std::vector<size_t> &dims,
-                                               std::vector<DetectedObject> &objects) const;
+                         std::vector<DetectedObject> &objects) const;
 
   public:
     YOLOv8Converter(BlobToMetaConverter::Initializer initializer, double confidence_threshold)
@@ -31,27 +31,6 @@ class YOLOv8Converter : public BlobToROIConverter {
     }
 
     TensorsTable convert(const OutputBlobs &output_blobs) const override;
-
-    // static const size_t model_object_size = 84; 
-
-    static bool isValidModelOutputs(const std::map<std::string, std::vector<size_t>> &model_outputs_info) {
-        bool result = false;
-
-        for (const auto &output : model_outputs_info) {
-            const std::vector<size_t> &dims = output.second;
-            if (dims.size() < BlobToROIConverter::min_dims_size)
-                continue;
-
-            result = true;
-            break;
-            // if (dims[dims.size() - 2] == YOLOv8Converter::model_object_size) {
-            //     result = true;
-            //     break;
-            // }
-        }
-
-        return result;
-    }
 
     static std::string getName() {
         return "yolo_v8";

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  ******************************************************************************/
 
-#include "yolo_v8.h"
+#include "yolo_v7.h"
 
 #include "inference_backend/image_inference.h"
 #include "inference_backend/logger.h"
@@ -19,7 +19,7 @@
 
 using namespace post_processing;
 
-void YOLOv8Converter::parseOutputBlob(const float *data, const std::vector<size_t> &dims,
+void YOLOv7Converter::parseOutputBlob(const float *data, const std::vector<size_t> &dims,
                                       std::vector<DetectedObject> &objects) const {
 
     size_t dims_size = dims.size();
@@ -31,34 +31,47 @@ void YOLOv8Converter::parseOutputBlob(const float *data, const std::vector<size_
                                     " is not supported (less than " +
                                     std::to_string(BlobToROIConverter::min_dims_size) + ").");
 
-    size_t object_size = dims[dims_size - 2];
-    size_t max_proposal_count = dims[dims_size - 1];
+    size_t object_size = dims[dims_size - 1];
+    const int NUM_CLASSES = object_size - YOLOV7_OFFSET_CS;
 
-    cv::Mat outputs(object_size, max_proposal_count, CV_32F, (float *)data);
+    size_t max_proposal_count = dims[dims_size - 2];
 
-    cv::transpose(outputs, outputs);
-    float *output_data = (float *)outputs.data;
-    for (size_t i = 0; i < max_proposal_count; ++i) {
-        float *classes_scores = output_data + 4;
-        cv::Mat scores(1, object_size - 4, CV_32FC1, classes_scores);
-        cv::Point class_id;
-        double maxClassScore;
-        cv::minMaxLoc(scores, 0, &maxClassScore, 0, &class_id);
-        if (maxClassScore > confidence_threshold) {
+    for (size_t box_index = 0; box_index < max_proposal_count; ++box_index) {
 
-            float x = output_data[0];
-            float y = output_data[1];
-            float w = output_data[2];
-            float h = output_data[3];
-            objects.push_back(DetectedObject(x, y, w, h, maxClassScore, class_id.x,
-                                             BlobToMetaConverter::getLabelByLabelId(class_id.x), 1.0f / input_width,
-                                             1.0f / input_height, true));
+        const float *output_data = &data[box_index * object_size];
+
+        float x = output_data[YOLOV7_OFFSET_X];
+        float y = output_data[YOLOV7_OFFSET_Y];
+        float w = output_data[YOLOV7_OFFSET_W];
+        float h = output_data[YOLOV7_OFFSET_H];
+        float confidence = output_data[YOLOV7_OFFSET_BS];
+
+        // early exit if entire box has low detection confidence
+        if (confidence < confidence_threshold) {
+            continue;
         }
-        output_data += object_size;
+
+        // find main class with highest probability
+        size_t main_class = 0;
+        for (size_t class_index = 0; class_index < (size_t)NUM_CLASSES; ++class_index) {
+            if (output_data[YOLOV7_OFFSET_CS + class_index] > output_data[YOLOV7_OFFSET_CS + main_class]) {
+                main_class = class_index;
+            }
+        }
+
+        // update with main class confidence
+        confidence *= output_data[YOLOV7_OFFSET_CS + main_class];
+        if (confidence < confidence_threshold) {
+            continue;
+        }
+
+        objects.push_back(DetectedObject(x, y, w, h, confidence, main_class,
+                                         BlobToMetaConverter::getLabelByLabelId(main_class), 1.0f / input_width,
+                                         1.0f / input_height, true));
     }
 }
 
-TensorsTable YOLOv8Converter::convert(const OutputBlobs &output_blobs) const {
+TensorsTable YOLOv7Converter::convert(const OutputBlobs &output_blobs) const {
     ITT_TASK(__FUNCTION__);
     try {
         const auto &model_input_image_info = getModelInputImageInfo();
@@ -82,7 +95,7 @@ TensorsTable YOLOv8Converter::convert(const OutputBlobs &output_blobs) const {
 
         return storeObjects(objects_table);
     } catch (const std::exception &e) {
-        std::throw_with_nested(std::runtime_error("Failed to do YoloV8 post-processing."));
+        std::throw_with_nested(std::runtime_error("Failed to do YoloV7 post-processing."));
     }
     return TensorsTable{};
 }

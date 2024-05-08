@@ -1,7 +1,9 @@
 ################################################################################
-# Dockerfile to build an image for development of DL Streamer. It follows
-# instructions given in [1] and [2] to install OpenVINO™ Runtime and prepares
-# the environment for building DL Streamer from sources.
+# Dockerfile to build an image for development of DL Streamer based on
+# Ubuntu 22.04.
+#
+# It follow instructions given in [1] and [2] to install OpenVINO™ Runtime and
+# prepare the environment for building DL Streamer from sources.
 # 
 # Author:
 #   Johnny Chien <Johnny.Chien@at.govt.nz>
@@ -28,6 +30,7 @@ ARG OPENVINO_INSTALL_DIR=/opt/intel/openvino_2024.0.0
 ARG DLSTREAMER_SOIURCE_TREE=/home/${RUNTIME_USERNAME}/dlstreamer_gst
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG APT_GET_ARGS="-y -q --no-install-recommends"
 
 LABEL description="This is the development image of Intel® Deep Learning Streamer (Intel® DL Streamer) Pipeline Framework"
 LABEL vendor="Auckland Transport"
@@ -51,7 +54,7 @@ RUN useradd \
 WORKDIR /opt/intel
 
 RUN apt-get update \
- && apt-get install -y -q --no-install-recommends curl=\* gpg=\* ca-certificates=\* gnupg=\* wget=\* libtbb12=\* python3-pip=\* \
+ && apt-get install $APT_GET_ARGS curl=\* gpg=\* ca-certificates=\* gnupg=\* wget=\* libtbb12=\* python3-pip=\* \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* 
 
@@ -83,7 +86,7 @@ RUN python3 -m pip install --upgrade pip \
 
 # Install build dependencies
 RUN apt-get update \
- && apt-get install -y -q --no-install-recommends \
+ && apt-get install $APT_GET_ARGS \
     curl wget gpg software-properties-common cmake build-essential \
     libpython3-dev python-gi-dev libopencv-dev jq \
     libgflags-dev libavcodec-dev libva-dev libavformat-dev libavutil-dev libswscale-dev \
@@ -93,8 +96,8 @@ RUN apt-get update \
 RUN mkdir debs \
  && wget $(wget -q -O - https://api.github.com/repos/dlstreamer/dlstreamer/releases/latest | \
     jq -r '.assets[] | select(.name | contains (".deb")) | .browser_download_url') -P ./debs \
- && apt-get install -y -q ./debs/intel-dlstreamer-gst* \
- && apt-get install -y -q ./debs/intel-dlstreamer-ffmpeg* \
+ && apt-get install $APT_GET_ARGS ./debs/intel-dlstreamer-gst* \
+ && apt-get install $APT_GET_ARGS ./debs/intel-dlstreamer-ffmpeg* \
  && rm -rf debs \
  && apt-get clean
 
@@ -142,52 +145,3 @@ RUN source /opt/intel/openvino/setupvars.sh \
  && cmake ${CMAKE_BUILD_ARGS} .. \
  && make -j \
  && make install
-
-# ARG DLSTREAMER_VERSION=2024.0
-# ARG OPENVINO_FILENAME=l_openvino_toolkit_ubuntu22_2024.0.0.14509.34caeefd078_x86_64
-
-# USER root
-
-# SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
-
-# RUN apt-get update \
-#  && apt-get install -y -q --no-install-recommends gpg=\* ca-certificates=\* gnupg=\* wget=\* libtbb12=\* python3-pip=\* \
-#  && apt-get clean \
-#  && rm -rf /var/lib/apt/lists/* \
-#  && rm -f /etc/ssl/certs/Intel*
-
-# Intel® VPU drivers (optional)
-# RUN mkdir debs \
-#  && dpkg --purge --force-remove-reinstreq intel-driver-compiler-npu intel-fw-npu intel-level-zero-npu level-zero \
-#  && wget -q https://github.com/intel/linux-npu-driver/releases/download/v1.2.0/intel-driver-compiler-npu_1.2.0.20240404-8553879914_ubuntu22.04_amd64.deb -P ./debs \
-#  && wget -q https://github.com/intel/linux-npu-driver/releases/download/v1.2.0/intel-fw-npu_1.2.0.20240404-8553879914_ubuntu22.04_amd64.deb -P ./debs \
-#  && wget -q https://github.com/intel/linux-npu-driver/releases/download/v1.2.0/intel-level-zero-npu_1.2.0.20240404-8553879914_ubuntu22.04_amd64-dbgsym.ddeb -P ./debs \
-#  && wget -q https://github.com/intel/linux-npu-driver/releases/download/v1.2.0/intel-level-zero-npu_1.2.0.20240404-8553879914_ubuntu22.04_amd64.deb -P ./debs \
-#  && dpkg -i ./debs/*.deb \
-#  && rm -rf debs
-
-# Intel® Data Center GPU Flex Series drivers (optional)
-# hadolint ignore=SC1091
-
-# RUN apt-get update \
-#  &&  . /etc/os-release \
-#  && if [[ ! "jammy" =~ ${VERSION_CODENAME} ]]; then echo "Ubuntu version ${VERSION_CODENAME} not supported"; \
-#     else \
-#         wget -qO- https://repositories.intel.com/gpu/intel-graphics.key | gpg --dearmor --output /usr/share/keyrings/gpu-intel-graphics.gpg \
-#  &&     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/gpu-intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu ${VERSION_CODENAME}/lts/2350 unified" | tee /etc/apt/sources.list.d/intel-gpu-"${VERSION_CODENAME}".list \
-#  &&     apt-get update; \
-#     fi \
-#  && KERNEL_RELEASE=$(uname -r) \
-#  && if [[ $KERNEL_RELEASE == *"WSL"* ]]; then \
-#         KERNEL_RELEASE="generic"; \
-#     fi \
-#  && echo "Using Linux kernel headers for ${KERNEL_RELEASE}" \
-#  && apt-get install -y --no-install-recommends linux-headers-"$KERNEL_RELEASE"=\* flex=\* bison=\* intel-fw-gpu=\* intel-i915-dkms=\* xpu-smi=\* \
-#      intel-opencl-icd=\* intel-level-zero-gpu=\* level-zero=\* \
-#      intel-media-va-driver-non-free=\* libmfx1=\* libmfxgen1=\* libvpl2=\* \
-#      libegl-mesa0=\* libegl1-mesa=\* libegl1-mesa-dev=\* libgbm1=\* libgl1-mesa-dev=\* libgl1-mesa-dri=\* \
-#      libglapi-mesa=\* libgles2-mesa-dev=\* libglx-mesa0=\* libigdgmm12=\* libxatracker2=\* mesa-va-drivers=\* \
-#      mesa-vdpau-drivers=\* mesa-vulkan-drivers=\* va-driver-all=\* vainfo=\* hwinfo=\* clinfo=\* \
-#  &&  apt-get clean \
-#  &&  rm -rf /var/lib/apt/lists/* \
-#  &&  rm -f /etc/ssl/certs/Intel*
